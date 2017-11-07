@@ -25,8 +25,8 @@
 
 #include "hbe.h"
 #include "LibMatrix.h"
-#include "LibImages.h"
-#include "Utilities.h"
+#include "../Utilities/LibImages.h"
+#include "../Utilities/Utilities.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -36,38 +36,26 @@ using namespace std;
 
 void initializeParameters(
 	nlbParams &o_paramStep2
-,   const double p_sigma
 ,	const ImageSize &p_imSize
 ,   const bool p_verbose
 ,	unsigned pSize
 ,	unsigned offset
 ){
 	//! Standard deviation of the noise
-	o_paramStep2.sigma = p_sigma;
+	//!o_paramStep2.sigma = p_sigma;
 
-	//! Size of patches
-	if (p_imSize.nChannels == 1) {				
-		o_paramStep2.sizePatch = pSize;		
-	}
-	else {
-        o_paramStep2.sizePatch = pSize;
-	}
+	//! Size of patches	
+    o_paramStep2.sizePatch = pSize;
+	
 
 	//! Number of similar patches
-	if (p_imSize.nChannels == 1) {
-		o_paramStep2.nSimilarPatches =	(p_sigma < 20. ? 2*pSize*pSize :
-										(p_sigma < 40. ? 25 :
-										(p_sigma < 80. ? 30 : 45)));
-	}
-	else {
-		o_paramStep2.nSimilarPatches = o_paramStep2.sizePatch * o_paramStep2.sizePatch * 3;
-	}
+	o_paramStep2.nSimilarPatches = o_paramStep2.sizePatch * o_paramStep2.sizePatch * 2;
 
 	//! Offset: step between two similar patches
 	o_paramStep2.offSet = offset;
 
 	//! Size of the search window around the reference patch (must be odd)	
-	o_paramStep2.sizeSearchWindow = pSize*3+1;
+	o_paramStep2.sizeSearchWindow = pSize*6+1;
 	if (o_paramStep2.sizeSearchWindow % 2 == 0) {
 		o_paramStep2.sizeSearchWindow++;
 	}
@@ -77,6 +65,9 @@ void initializeParameters(
 
 	//! Print information?
 	o_paramStep2.verbose = p_verbose;
+	
+	//! Parameter used to determine similar patches
+	o_paramStep2.tau = 16. * o_paramStep2.sizePatch * o_paramStep2.sizePatch * p_imSize.nChannels;
 
 }
 
@@ -99,8 +90,8 @@ int runHBE(
 ,   std::vector<double> &imBasic
 ,	std::vector<double> &imFinal
 ,   std::vector<double> &imUmask
+,   std::vector<double> &imSveF
 ,	const ImageSize &p_imSize
-,	const double p_sigma
 ,   const bool p_verbose
 ,	double alphaH
 ,	double alphaL
@@ -110,15 +101,11 @@ int runHBE(
 ,	double Nfactor
 ,	double NfactorPrior
 ,	double epsilon_pd
-,	double varSigma
+,	double muR
+,	double sigmaR 
+,	double gain
+,	double tau
 ){
-	//! Only 1, 3 or 4-channels images can be processed.
-	const unsigned chnls = p_imSize.nChannels;
-	if (! (chnls == 1 || chnls == 3 || chnls == 4)) {
-		cout << "Wrong number of channels. Must be 1 or 3!!" << endl;
-		return EXIT_FAILURE;
-	}
-
 	//! Number of available cores
 	unsigned nbThreads = 1;
 #ifdef _OPENMP
@@ -135,7 +122,7 @@ int runHBE(
 
 	//! Parameters Initialization
 	nlbParams paramStep2;
-	initializeParameters(paramStep2, p_sigma, p_imSize, 
+	initializeParameters(paramStep2, p_imSize, 
 							p_verbose, pSize, offset);
 
 	//! Start processing
@@ -153,7 +140,7 @@ int runHBE(
 	//!parallelize the process
 	const unsigned nbParts = 2 * nbThreads;
 	vector<vector<double> > imNoisySub(nbParts), imUmaskSub(nbParts), 
-	imPLEmodelSub(nbParts), imBasicSub(nbParts), imFinalSub(nbParts);
+	imSveFSub(nbParts), imBasicSub(nbParts), imFinalSub(nbParts);
 	ImageSize imSizeSub;
 	cout << "NbParts: " << nbParts << endl;	
 	
@@ -182,6 +169,11 @@ int runHBE(
 			!= EXIT_SUCCESS) {
 			return EXIT_FAILURE;
 		}
+		if (subDivide(imSveF, imSveFSub, p_imSize, imSizeSub, 
+					paramStep2.boundary, nbParts)
+			!= EXIT_SUCCESS) {
+			return EXIT_FAILURE;
+		}
 		if (subDivide(imFinal, imFinalSub, p_imSize, imSizeSub, 
 					paramStep2.boundary, nbParts)
 			!= EXIT_SUCCESS) {
@@ -196,9 +188,10 @@ int runHBE(
 	#endif
 		for (int n = 0; n < (int) nbParts; n++) {
 			processHBE(imNoisySub[n], imBasicSub[n], imUmaskSub[n], 
+							imSveFSub[n], 
 							imFinalSub[n], imSizeSub, paramStep2, alphaH, 
 							alphaL, minPixKnown, Nfactor, 
-							NfactorPrior, epsilon_pd, varSigma);
+							NfactorPrior, epsilon_pd, muR, sigmaR, gain, tau);
 		}
 
 		//! Get the final result
@@ -230,6 +223,7 @@ void processHBE(
 	std::vector<double> const& imNoisy
 ,	std::vector<double> &imBasic
 ,	std::vector<double> &Umask
+,	std::vector<double> &imSveF
 ,	std::vector<double> &imFinal
 ,	const ImageSize &p_imSize
 ,	nlbParams &p_params
@@ -239,14 +233,16 @@ void processHBE(
 ,	double Nfactor
 ,	double NfactorPrior
 ,	double epsilon_pd
-,	double varSigma
+,	double muR
+,	double sigmaR
+,	double gain
+,	double tau
 ){
 	//! Parameters initialization
 	const unsigned sW		= p_params.sizeSearchWindow;
 	const unsigned sP		= p_params.sizePatch;
 	const unsigned sP2		= sP * sP;
 	const unsigned sPC		= sP2 * p_imSize.nChannels;
-	const unsigned nSP		= p_params.nSimilarPatches;
 	double minPixKnownP = minPixKnown*sPC;
 	
 	vector<double> Wout;
@@ -258,9 +254,8 @@ void processHBE(
 	imFinal.resize(p_imSize.whc);
 
 	//! Used matrices during estimate
-	vector<vector<double> > group3d(p_imSize.nChannels, vector<double> (nSP * sP2));
 	vector<double> group3dNoisy(sW * sW * sPC), group3dBasic(sW * sW * sPC),
-	group3dUmask(sW * sW * sPC),group3dBasicPrior(sW * sW * sPC);
+	group3dSveF(sW * sW * sPC),group3dUmask(sW * sW * sPC),group3dBasicPrior(sW * sW * sPC);	
 	vector<unsigned> index(sW * sW);
 
 	//! Mask: non-already processed patches
@@ -275,7 +270,6 @@ void processHBE(
 	
 	//! ponderation: weight sum per pixel
 	vector<double> weight(imNoisy.size(), 0.);
-	vector<double> Umask_current = Umask;
 	
 	double nu2_curr = alphaL;
 	double kappa2_curr = alphaL;
@@ -284,10 +278,7 @@ void processHBE(
 	unsigned nSimP, nSimPprior;
 	unsigned percentageToFill = 100;
 	
-	NDiag Ew(sPC);
-	for (unsigned k=1; k<=sPC; k++)
-		Ew(k) = varSigma;
-	
+
 	//! For all patches...	
 	for (unsigned ij = 0; ij < p_imSize.wh; ij += p_params.offSet) {	
 		
@@ -305,18 +296,21 @@ void processHBE(
 
 			//! Search for similar patches around the reference one
 			nSimP = p_params.nSimilarPatches;
-			nSimP = findSimilarPatches(imNoisy, imBasic, Umask, 
+			nSimP = findSimilarPatches(imNoisy, imBasic, Umask, imSveF, 											
 											group3dNoisy, group3dBasic, 
 											group3dBasicPrior, group3dUmask, 
+											group3dSveF,
 											index, ij, p_imSize, p_params, 
 											Nfactor, NfactorPrior, 
-											minPixKnownP, &nSimPprior);	
-
+											minPixKnownP, &nSimPprior);				
 			//! Count number of known pixels in the current patch
 			double knownPix = 0.0;
-			for (unsigned p = 0; p < sP; p++) 
-				for (unsigned q = 0; q < sP; q++) 
-					knownPix += Umask[ij + p * p_imSize.width + q];												
+			for (unsigned c = 0; c < p_imSize.nChannels; c++) {
+				const unsigned dc = c * p_imSize.wh;
+				for (unsigned p = 0; p < sP; p++) 
+					for (unsigned q = 0; q < sP; q++) 
+						knownPix += Umask[dc + ij + p * p_imSize.width + q];												
+			}									
 
 			//! Depending on number of known pixels and similar patches,
 			//! set the current values of kappa and nu
@@ -328,13 +322,12 @@ void processHBE(
 				kappa2_curr = alphaL;
 			}
 
-			//! Compute the restored patch
-			//cout << "Restoring " << nSimP << " sim patch" << endl;
+			//! Compute the restored patch			
 			computeBayesEstimate(group3dNoisy, group3dBasic, group3dBasicPrior, 
-								group3dUmask, p_imSize, p_params, nSimP, 
+								group3dUmask, group3dSveF, p_imSize, p_params, nSimP, 
 								nSimPprior, kappa2_curr, nu2_curr,
-								epsilon_pd, Ew, Wout);
-			//cout << "End restoring " << nSimP << " sim patch" << endl;
+								epsilon_pd, Wout, gain, sigmaR, tau);
+
 			//! Perform aggregation
 			computeAggregation(imFinal, weight, mask, group3dBasic, index, 
 								p_imSize, p_params, nSimP);										
@@ -352,10 +345,12 @@ unsigned findSimilarPatches(
 	std::vector<double> const& imNoisy
 ,	std::vector<double> const& imBasic
 ,	std::vector<double> const& Umask
+,	std::vector<double> const& i_sveF
 ,	std::vector<double> &o_group3dNoisy
 ,	std::vector<double> &o_group3dBasic
 ,	std::vector<double> &o_group3dBasicPrior
 ,	std::vector<double> &o_Umask
+,	std::vector<double> &o_sveF
 ,	std::vector<unsigned> &o_index
 ,	const unsigned p_ij
 ,	const ImageSize &p_imSize
@@ -415,7 +410,7 @@ unsigned findSimilarPatches(
 	//! elementos. Los elementos que siguen estan desordenados.
 	partial_sort(distance.begin(), distance.begin() + p_params.nSimilarPatches, 
 				distance.end(), comparaisonFirst);
-
+    
 	//! Define thresholds to select similar patches
 	double threshold = N*distance[1].first;	
 	if (threshold < DBL_MAX ) {
@@ -427,8 +422,7 @@ unsigned findSimilarPatches(
 			n++;
 		}	
 	} else 
-		threshold = 0.0;
-
+		threshold = 0.0;	
 	double threshold2 = Nprior*threshold/N > 
 						distance[p_params.nSimilarPatches - 1].first 
 						? Nprior*threshold/N : 
@@ -437,8 +431,8 @@ unsigned findSimilarPatches(
 	unsigned nSimP = 0;
 	unsigned nSimPprior = 0;
 
-	//! Register position of similar patches
-	for (unsigned n = 0; n < distance.size(); n++) {
+	//! Register position of similar patches	
+	for (unsigned n = 0; n < p_params.nSimilarPatches; n++) {
 		if (distance[n].first <= threshold) {
 			o_index[nSimP++] = distance[n].second;
 		}
@@ -459,7 +453,8 @@ unsigned findSimilarPatches(
 					unsigned indk = o_index[n] + cwh_pwidth_q;
 					o_group3dNoisy[k] = imNoisy[indk];
 					o_group3dBasic[k] = imBasic[indk];					
-					o_Umask[k] = Umask[indk];					
+					o_Umask[k] = Umask[indk];											
+					o_sveF[k] = i_sveF[indk];			
 				}
 	
 			}
@@ -511,6 +506,7 @@ void computeBayesEstimate(
 ,	std::vector<double> &io_group3dBasic
 ,	std::vector<double> &io_group3dBasicPrior
 ,	std::vector<double> &i_Umask
+,	std::vector<double> &i_sveF
 ,	const ImageSize &p_imSize
 ,	nlbParams p_params
 ,	const unsigned p_nSimP
@@ -518,8 +514,10 @@ void computeBayesEstimate(
 ,	double kappa
 ,	double nu
 ,	double epsilon_pd
-,	NDiag Ew
 ,	std::vector<double> &Wout
+,	double gain
+,	double sigmaR
+,	double tau
 ){
 	//! Parameters initialization
 	const unsigned sPC  = p_params.sizePatch * p_params.sizePatch * p_imSize.nChannels;
@@ -528,12 +526,8 @@ void computeBayesEstimate(
 	//! Patches are centered to comupte covariance matrices
 	//! but the non-centered versions are also kept to compute
 	//! the restoration
-	vector<double> io_group3dBasicOrig;
-	io_group3dBasicOrig = io_group3dBasic;
 	vector<double> i_group3dNoisyOrig;
 	i_group3dNoisyOrig = i_group3dNoisy;
-	vector<double> i_UmaskBasic;
-	i_UmaskBasic = i_Umask;
 
 	//! Compute mu estimate for prior and CENTER data to compute the
 	//! prior covariance matrix
@@ -551,7 +545,6 @@ void computeBayesEstimate(
 			io_group3dBasic[j * p_nSimP + i] = i_Umask[j * p_nSimP + i]*
 											   io_group3dBasic[j * p_nSimP + i];		
 
-
 	//! Main loop that iterates between two steps:
 	//! (i)  patch restoration and model mean computation
 	//! (ii) model covariance matrix computation 
@@ -559,13 +552,14 @@ void computeBayesEstimate(
 	unsigned maxIts = 2;
 	
 	for (unsigned iter = 0; iter < maxIts; iter++) {	
+		
 		//! Compute the filter W only once because it is the same 
-		//! for all patches restored together
-        computeW( i_group3dNoisyOrig, i_UmaskBasic, Wout,
-                cov_est_basic, p_nSimP, sPC, p_nSimP, Ew );
+		//! for all patches restored together		
+		computeW( i_group3dNoisyOrig, i_Umask, i_sveF, Wout,
+				cov_est_basic, p_nSimP, sPC, p_nSimP, gain, sigmaR, tau );
 		
 		//! Compute the model mean	
-		NColV mu_est_basic = centerData(i_group3dNoisyOrig, i_UmaskBasic, 
+		NColV mu_est_basic = centerData(i_group3dNoisyOrig, i_Umask, 
 							 mu_est_prior, p_nSimP, sPC, kappa, p_nSimP, Wout);
 
 		//! Restore the patches
@@ -596,11 +590,11 @@ void computeBayesEstimate(
 		}
 
 		//! Compute the covariance matrix of the set of similar patches		
-		cov_est_basic = covarianceMatrix(io_group3dBasic, i_UmaskBasic, 
+		cov_est_basic = covarianceMatrix(io_group3dBasic, i_Umask, 
 							mu_est_prior, cov_est_prior, 
 							p_nSimP, sPC, kappa, nu, mu_est_basic, 
 							p_params.beta, p_nSimP, 
-							epsilon_pd, Ew);			
+							epsilon_pd );			
 
 		//! Add mean to previously restored patches
 		for (unsigned j = 0, k = 0; j < sPC; j++) {

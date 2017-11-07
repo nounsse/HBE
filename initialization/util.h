@@ -62,10 +62,6 @@ void imread(
 ,		MatrixXd *& image		
 );
 
-void imread(size_t nx, size_t ny, size_t nc,
-        float * pixel_stream,
-        MatrixXd *& image);
-
 void imread_16bits(	
 		const char * file_name
 ,		int & image_rows
@@ -101,6 +97,22 @@ void imwrite_pgm(
 , 		MatrixXd * image
 , 		int num_channels
 );
+
+void imwrite_exr( 
+		const char * file_name 
+, 		MatrixXd * image
+, 		int num_channels
+);
+
+void imread_exr(	
+		const char * file_name
+,		int i_num_channels
+,		int & image_rows
+,		int & image_cols
+, 		int & num_channels
+,		MatrixXd *& image		
+);
+
 
 /**
  * @brief reduce a gray image into patches 
@@ -147,19 +159,6 @@ MatrixXd * patches2image(
 );
 
 
-/**
- * @brief switch between RBG and a slightly different YUV 
- *
- * @param image image array. In case of a gray image, do nothing 
- * @param inverse RGB to YUV or YUV to RGB 
- */
-void RGB_transform( 
-		MatrixXd * image
-,		int num_channels
-,		bool inverse 
-);
-
-
 /**@brief present the patch array with matrices*/
 void vectorArray2Matrix( 
 		VectorXd ** varray
@@ -167,7 +166,43 @@ void vectorArray2Matrix(
 ,		MatrixXd & vmatrix
 );
 
+/**
+ * @brief tensor structure orientation detector 
+ *
+ * @param image a gray image for patch sampling 
+ * @param row row coordinate of the upper left corner of the patch   
+ * @param col col coordinate of the upper left corner of the patch
+ * @param SamplingParams see its definition
+ * @return the model to which the patch should belong
+ */
+int tensorStructure(
+		MatrixXd & image
+,		int row
+,		int col
+,		SamplingParams & params	
+);
+
+/**
+ * @brief sample patches from a set of gray PNG and output the result 
+ *
+ * @param patch_size the size of sample patches 
+ * @param flat_threshold 
+ * @param orient_threshold 
+ * @param num_orientations the number of directional models needed
+ * @param minimal_num_samples the minimal number of samples required for each model  
+ * @return a formatted data file filename
+ */
+void sample_images(	
+		int patch_size
+,		double flat_threshold
+,		double orient_threshold 
+,		int num_orientations
+,		int minimal_num_samples	
+,		const char * filename
+);
 
 void separate_channels( float *u0, float **u1, int ncol, int nrow );
 
 MatrixXd * remake_bayer( MatrixXd * image, int num_channels, int num_channels_out );
+
+std::string getFileExt(const std::string& s);

@@ -84,8 +84,8 @@ static void skip_whites_and_comments(FILE * f)
     {
       while(isspace(c=getc(f))); /* skip spaces */
       if(c=='#') /* skip comments */
-	while( c!='\n' && c!='\r' && c!=EOF )
-	  c=getc(f);
+    while( c!='\n' && c!='\r' && c!=EOF )
+      c=getc(f);
     }
   while( c == '#' || isspace(c) );
   if( c != EOF && ungetc(c,f) == EOF )
@@ -137,10 +137,10 @@ double *read_pgm_double(const char * fname, int * ncol, int *nrow)
   skip_whites_and_comments(f);
   depth = get_num(f);            /* depth */
   if(depth==0) fprintf(stderr,
-		       "Warning: depth=0, probably invalid PGM file\n");
+               "Warning: depth=0, probably invalid PGM file\n");
   /* white before data */
   if(!isspace(c=getc(f))) errorf("Error: corrupted PGM file ",fname);
-  
+
   /* get memory */
   data = (double *) calloc((*ncol) * (*nrow), sizeof(double));
   if (data == NULL)
@@ -152,9 +152,9 @@ double *read_pgm_double(const char * fname, int * ncol, int *nrow)
   if(depth<256)
     {
       for(i=0;i<*nrow;i++)
-	for(j=0;j<*ncol;j++)
-	  data[ j + i * (*ncol)] = bin ?
-	    (double) getc(f) : (double) get_num(f);
+    for(j=0;j<*ncol;j++)
+      data[ j + i * (*ncol)] = bin ?
+        (double) getc(f) : (double) get_num(f);
     }
   /*16 bits PGM Most significant byte first
    * see http://netpbm.sourceforge.net/doc/pgm.html
@@ -162,9 +162,9 @@ double *read_pgm_double(const char * fname, int * ncol, int *nrow)
   else {
     for(i=0;i<*nrow;i++)
       for(j=0;j<*ncol;j++)
-	/*most significant byte first*/
-	data[ j + i * (*ncol) ] = bin ? ((double) getc(f)*256) +
-	  (double)getc(f) : (double) get_num(f);
+    /*most significant byte first*/
+    data[ j + i * (*ncol) ] = bin ? ((double) getc(f)*256) +
+      (double)getc(f) : (double) get_num(f);
 
   }
 
@@ -189,17 +189,17 @@ void write_pgm_double(const char *fname, const double *data, int ncol, int nrow)
   for(i=0; i< nrow; i++)
     for(j=0; j<ncol; j++)
       {
-	v = (int) data[ j + i * ncol];
-	if( v > max ) max = v;
-	if( v < min ) min = v;
+    v = (int) data[ j + i * ncol];
+    if( v > max ) max = v;
+    if( v < min ) min = v;
       }
 
   if( min < 0 ) fprintf(stderr,
-			"Warning: negative values in '%s'.\n",
-			fname);
+            "Warning: negative values in '%s'.\n",
+            fname);
   if( max > 255 ) fprintf(stderr,
-			  "Warning: values exceeding 255 in '%s'.\n",
-			  fname);
+              "Warning: values exceeding 255 in '%s'.\n",
+              fname);
 
   /* open file */
   if( strcmp(fname,"-") == 0 ) f = stdout;
@@ -239,13 +239,13 @@ void write_pgm_normalize_double(const char *fname, const double *data,
   for(i=0; i< nrow; i++)
     for(j=0; j<ncol; j++)
       {
-	v = data[ j + i * ncol];
-	if( v > max ) max = v;
-	if( v < min ) min = v;
+    v = data[ j + i * ncol];
+    if( v > max ) max = v;
+    if( v < min ) min = v;
       }
 
   if( min < 0 ) fprintf(stderr,
-			"Warning: negative values in '%s' are truncated to zero.\n",fname);
+            "Warning: negative values in '%s' are truncated to zero.\n",fname);
 
   /* open file */
   if( strcmp(fname,"-") == 0 ) f = stdout;
@@ -261,7 +261,7 @@ void write_pgm_normalize_double(const char *fname, const double *data,
   for(i=0; i<nrow; i++)
     for(j=0; j<ncol; j++)
       fputc((unsigned char) (data[j+i*ncol]>0)
-	    ? 255.0/max*data[j+i*ncol] : 0 ,f);
+        ? 255.0/max*data[j+i*ncol] : 0 ,f);
 
   /* close file if needed */
   if( f != stdout && fclose(f) == EOF )
@@ -289,32 +289,32 @@ void write_ppm_normalize_double(const char *fname, const double *rdata,
   for(i=0; i< nrow; i++)
     for(j=0; j<ncol; j++)
       {
-	v = rdata[ j + i * ncol];
-	if( v > max ) max = v;
-	if( v < min ) min = v;
+    v = rdata[ j + i * ncol];
+    if( v > max ) max = v;
+    if( v < min ) min = v;
       }
 
   /*g*/
   for(i=0; i< nrow; i++)
     for(j=0; j<ncol; j++)
       {
-	v = gdata[ j + i * ncol];
-	if( v > max ) max = v;
-	if( v < min ) min = v;
+    v = gdata[ j + i * ncol];
+    if( v > max ) max = v;
+    if( v < min ) min = v;
       }
 
   /*b*/
   for(i=0; i< nrow; i++)
     for(j=0; j<ncol; j++)
       {
-	v = bdata[ j + i * ncol];
-	if( v > max ) max = v;
-	if( v < min ) min = v;
+    v = bdata[ j + i * ncol];
+    if( v > max ) max = v;
+    if( v < min ) min = v;
       }
 
   if( min < 0 ) fprintf(stderr,
-			"Warning: negative values in '%s' are truncated to zero.\n",
-			fname);
+            "Warning: negative values in '%s' are truncated to zero.\n",
+            fname);
 
   /* open file */
   if( strcmp(fname,"-") == 0 ) f = stdout;
@@ -330,14 +330,14 @@ void write_ppm_normalize_double(const char *fname, const double *rdata,
   for(i=0; i<nrow; i++)
     for(j=0; j<ncol; j++)
       {
-	static unsigned char color[3];
-	/*red*/
-	color[0] =(rdata[j+i*ncol]>0)? 255.0/max*rdata[j+i*ncol]:0;
-	/*green*/
-	color[1] =(gdata[j+i*ncol]>0)? 255.0/max*gdata[j+i*ncol]:0;
-	/*blue*/
-	color[2] =(bdata[j+i*ncol]>0)? 255.0/max*bdata[j+i*ncol]:0;
-	(void) fwrite(color, 1, 3, f);
+    static unsigned char color[3];
+    /*red*/
+    color[0] =(rdata[j+i*ncol]>0)? 255.0/max*rdata[j+i*ncol]:0;
+    /*green*/
+    color[1] =(gdata[j+i*ncol]>0)? 255.0/max*gdata[j+i*ncol]:0;
+    /*blue*/
+    color[2] =(bdata[j+i*ncol]>0)? 255.0/max*bdata[j+i*ncol]:0;
+    (void) fwrite(color, 1, 3, f);
       }
   /* close file if needed */
   if( f != stdout && fclose(f) == EOF )

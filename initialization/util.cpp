@@ -24,6 +24,7 @@
 #include <fstream>		// read in noise data
 #include "io_png.h" 		// image IO
 #include "io_pgm.h" 		// image IO
+#include "io_exr.h"
 #include <stack>
 
 #ifndef STRING_H
@@ -97,33 +98,6 @@ void times (const char *which) {
 
 
 //wrapper in Matlab style
-void imread(
-        size_t nx
-,       size_t ny
-,       size_t nc
-,       float * pixel_stream
-,       MatrixXd *& image
-){
-        if( pixel_stream == NULL )
-            fail("Unable to get the image");
-
-        //return these useful parameters
-        int image_cols = (int)nx;
-        int image_rows = (int)ny;
-        int num_channels = (int)nc;
-
-        //input stream assumes row-major while Eigen defaults to column-major
-        Map<MatrixXf> parallel( pixel_stream, image_cols, image_rows * num_channels );
-        image = new MatrixXd [ num_channels ];
-        for( int ch = 0; ch < num_channels; ch++ )
-            image[ ch ] = parallel.block( 0, ch*image_rows, image_cols, image_rows).transpose().cast<double>();
-
-        //release
-        free(pixel_stream);
-        cout << "INFO: read in image of dimension: (" << ny << " , " << nx << " , " << nc << ")" << endl;
-}
-
-//wrapper in Matlab style
 void imread(	
 		const char * file_name
 ,		int & image_rows
@@ -132,7 +106,7 @@ void imread(
 ,		MatrixXd *& image		
 ){
 		size_t nx, ny, nc;
-        float * pixel_stream = NULL;
+		float * pixel_stream = NULL;
 		pixel_stream = read_png_f32( file_name, &nx, &ny, &nc );
 		if( pixel_stream == NULL )
 			fail("Unable to get the image");	
@@ -281,6 +255,122 @@ void imwrite_pgm(
 	cout << "INFO: write the image " << file_name << " to local folder." << endl;
 }
 
+//write image and release memory
+void imwrite_exr( 
+		const char * file_name 
+, 		MatrixXd * image
+, 		int num_channels
+){
+	int image_cols = image[0].cols();
+	int image_rows = image[0].rows();
+	int pixels_per_channel = image_cols * image_rows; 
+	
+	float * output = new float [ pixels_per_channel * num_channels ];
+
+	//this part should be straightforward but still be careful with the order
+	#pragma omp parallel for schedule( static )
+	for(int j = 0; j < image_cols; j++)
+		for(int i = 0; i < image_rows; i++)
+			for(int ch = 0; ch < num_channels; ch++)
+				output[ ch*pixels_per_channel + i*image_cols + j ] = (float) image[ch](i,j);
+	//release
+	//delete [] image;	
+	writeEXR_float( file_name, output, image_cols, image_rows );
+	delete [] output;
+	cout << "INFO: write the image " << file_name << " to local folder." << endl;
+}
+
+void imread_exr(	
+		const char * file_name
+,		int i_num_channels
+,		int & image_rows
+,		int & image_cols
+, 		int & num_channels
+,		MatrixXd *& image		
+){
+		int nx, ny, nc;
+		float * pixel_stream = NULL;
+		nc = i_num_channels;
+		pixel_stream = readEXR_float(file_name, &nx, &ny);	
+		if( pixel_stream == NULL )
+			fail("Unable to get the image.");			
+		
+		if ( i_num_channels == 4 ) {
+			image_cols = (int)nx / 2;
+			image_rows = (int)ny / 2;
+		} else if ( i_num_channels == 1 ) {
+			image_cols = (int)nx;
+			image_rows = (int)ny;
+		} else 			
+			fail("Incorrect number of channels. Code done for 1 or 4 channels. Use 1 for gray level images and 4 for RAW images (color images).");			
+		
+		num_channels = (int)nc;
+		
+		float *fpI[num_channels];
+		for (int ii=0; ii < num_channels; ii++) 
+			fpI[ii] = (float*) malloc(image_rows*image_cols*sizeof(float)); 
+		
+		if ( i_num_channels == 4 )
+			separate_channels( pixel_stream, fpI, nx, ny );
+		else if ( i_num_channels == 1 )
+			for ( int k=0; k < image_rows*image_cols; k++)
+				fpI[0][k] = pixel_stream[k];
+		else 
+			cout << "Incorrect number of channels\n" << endl;
+
+		//input stream assumes row-major while Eigen defaults to column-major
+		//Map<MatrixXf> parallel( pixel_stream, image_cols, image_rows * num_channels );
+		image = new MatrixXd [ num_channels ];
+		for( int ch = 0; ch < num_channels; ch++ ) {
+			Map<MatrixXf> parallel( fpI[ch], image_cols, image_rows );
+			image[ ch ] = parallel.transpose().cast<double>();
+		}
+		//release
+		free(pixel_stream);
+		cout << "INFO: read in image " << file_name << " of dimension: (" << ny << " , " << nx << " , " << nc << ")" << endl;
+}
+
+
+//add noise to image
+void add_gaussian_noise( 
+		MatrixXd * image
+, 		double sigma
+,		int num_channels
+,		bool generate_noise 
+){
+	int image_rows = image[0].rows();
+	int image_cols = image[0].cols();
+	int pixels_per_channel = image_rows * image_cols;
+
+	//generate defaults to true
+	//the other option allows you to read in noise
+	//which is helpful in algo comparison and debugging
+	if( generate_noise ){
+		init_randmt_auto();
+		double * noise = new double [ pixels_per_channel ];
+		for(int ch = 0; ch < num_channels; ch++){
+			for( int i = 0; i < pixels_per_channel; i++ )
+				noise[ i ] = sigma * rand_normal();
+			Map<MatrixXd> pure_noise( noise, image_rows, image_cols );
+			image[ch] += pure_noise;
+		}
+		delete [] noise;
+	}else{
+		//noise_data is a binary file containing noise
+		int num_data = pixels_per_channel * num_channels;
+		double noise [num_data];
+		FILE * noise_data = fopen( "noise_data", "rb" );
+		if( noise_data == NULL )
+			fail("Unable to get the noise data");
+		size_t count = fread( noise, sizeof(double), num_data, noise_data );
+		Map<MatrixXd> pure_noise( noise, image_rows, image_cols * num_channels );
+		for( int ch = 0; ch < num_channels; ch++ )
+			image[ch] += pure_noise.block( 0, ch * image_cols, image_rows, image_cols );
+	}
+	
+	cout << "INFO: noise with sigma = " << sigma << " is added to the image." << endl;
+	
+}
 
 //calc num of patches needed to cover the whole image
 //according to a sliding window scheme specified by overlap
@@ -316,6 +406,10 @@ VectorXd ** image2patches(
 	int map_rows = num_patches( image_rows, patch_size, overlap );
 	int map_cols = num_patches( image_cols, patch_size, overlap );
 	int data_size = pow( patch_size, 2 );
+	/*cout << "in function " << endl;
+	cout << image_rows << " " << image_cols << " " <<  patch_size << " " <<  overlap << endl; 
+	cout << "Vals: " << map_rows << " " << map_cols << endl;*/
+	cout << "overlap img2pt " << overlap << endl;
 	
 //	allocate some memory for patches
 	VectorXd ** patch_at_coordinates = new VectorXd * [ map_rows ];
@@ -337,6 +431,10 @@ VectorXd ** image2patches(
 			patch_at_coordinates[i][j] = VectorXd::Zero(data_size*num_channels);
 			coordinate_j = max( 0, min( max_coordinate_j, coordinate_j + step ) );
 			for ( int ch=0; ch < num_channels; ch++ ) {
+				/*for (unsigned kk=0; kk<patch_size; kk++)
+					for (unsigned jj=0; jj<patch_size; jj++)
+						cout << "img = " << image[ch]( coordinate_i+kk, coordinate_j+jj) << " ";
+				cout<< endl;*/
 				MatrixXd patch (patch_size, patch_size);
 				patch = image[ch].block( coordinate_i, coordinate_j, patch_size, patch_size ).transpose();								
 				patch_at_coordinates[i][j].segment(ch*data_size,data_size) = Map<MatrixXd>( patch.data(), data_size, 1 );
@@ -355,6 +453,7 @@ MatrixXd * patches2image(
 ,		int num_channels
 , 		int image_rows
 , 		int image_cols
+//,		double *likelihoods_winners
 ,		bool normalize
 ){
 	int data_size = patch_size * patch_size;
@@ -387,9 +486,10 @@ MatrixXd * patches2image(
 							VectorXd patch_aux = patch_at_coordinates[i][j].segment(ch*data_size,data_size);							
 	                        image[ch].block(coordinate_i, coordinate_j, patch_size, patch_size) += Map<MatrixXd>( patch_aux.data(), patch_size, patch_size ).transpose();// * likelihoods_winners[ i*map_cols + j];
 	                        
-			//equivalently, use RowMajor config                         
+			//equivalently, use RowMajor config 
+                        //image.block(coordinate_i, coordinate_j, patch_size, patch_size) += Map<RMatrixXd>( patch_at_coordinates[i][j].data(), patch_size, patch_size ); 
 			if( normalize )
-	                        mask[ch].block(coordinate_i, coordinate_j, patch_size, patch_size) += block; 
+	                        mask[ch].block(coordinate_i, coordinate_j, patch_size, patch_size) += block; //*likelihoods_winners[ i*map_cols + j];
 						}
                 }
     }
@@ -399,36 +499,6 @@ MatrixXd * patches2image(
 
 	return image;
 }
-
-//color space transformation to enhance the 1st channel's SNR
-void RGB_transform( 
-		MatrixXd * image
-,		int num_channels
-,		bool inverse 
-){
-	//transformation is only defined for color image
-	if( num_channels == 1 )
-		return;
-	MatrixXd * copy = new MatrixXd[ num_channels ];
-	for( int ch = 0; ch < num_channels; ch++ )
-		copy[ch] = image[ch];
-	//meat
-	if( !inverse ){
-		// center signal rather than noise to be statistically consistent 
-		image[0] = (copy[0] + copy[1] + copy[2])/3.;
-		image[1] = (copy[0] - copy[2])/sqrt(2.);
-		image[2] = (copy[0] - copy[1]*2. + copy[2])/sqrt(6.);
-	}else{
-		// copy[0] remains the same because of the change made above
-		copy[1] /= sqrt(2.);
-		copy[2] /= sqrt(6.);
-		image[0] = copy[0] + copy[1] + copy[2]; 
-		image[1] = copy[0] - 2.*copy[2];
-		image[2] = copy[0] - copy[1] + copy[2];
-	}
-	delete [] copy;
-} 
-
 
 
 void vectorArray2Matrix( 
@@ -442,6 +512,53 @@ void vectorArray2Matrix(
 		vmatrix.block( 0, col, n_rows, 1 ) = varray[row_id][col];
 }
 
+//tensor structure orientation detector
+int tensorStructure(
+		MatrixXd & image
+,		int row
+,		int col
+,		SamplingParams & params	
+){
+	Matrix2d tensor = Matrix2d::Zero();
+	static int patch_size = params.patch_size;
+	//first I need to compute gradient at all the pixel sites in the patch
+	for( int i = row; i < row + patch_size; i++ )	
+		for( int j = col; j < col + patch_size; j++ ){
+			//I'll always avoid image boundary, so relax
+			//this scheme of differentiation is better as the second order error is gone
+			double row_grad = image(i+1,j)	- image(i-1,j);
+			double col_grad = image(i,j+1) - image(i,j-1);
+			Vector2d grad;
+			grad << row_grad, col_grad;	
+			tensor += grad*grad.transpose();
+		}
+	//the traditional Ax = \lambda x thing didn't prove numerically reliable. Sorry, fall back to NewMat
+	NMatrix cov_container(2, 2);
+	cov_container << tensor.data(); 
+	NSym sym_cov(2);
+	sym_cov << cov_container;
+	NMatrix U(2, 2);
+	NDiag D(2);
+	SVD( sym_cov, D, U  );
+	double big_val = D(1,1);
+	double small_val = D(2,2); 
+	//now we are going to decide 
+	int model;
+	if( big_val/small_val < params.orient_threshold ){
+		model = big_val < params.flat_threshold ? params.flat_model : params.textural_model;
+	}else{
+		//take the eigenvector associated with the larger eigenvalue
+		double theta = atan(U(2,1)/U(1,1));
+		theta = theta >= 0 ? theta : theta + M_PI;
+		model = floor(theta*params.num_orientations/M_PI);
+		//sometimes, if theta is a very small negative, shit does happen
+		if( model == params.textural_model ){
+			cout << "INFO: a tiny numerical approximation leads to a big quantification error. Corrected!" << endl;
+			model = model - 1;
+		}	
+	}
+	return model;
+}
 
 
 void separate_channels( float *u0, float **u1, int ncol, int nrow ) 
@@ -510,7 +627,8 @@ MatrixXd * remake_bayer( MatrixXd * image, int num_channels, int num_channels_ou
   for ( int ch=0; ch<num_channels; ch++ ) {
 	u1[ch] = (float*)malloc(wh*sizeof(float));
 	for ( int i=0; i<nrow_ch ; i++ )
-		for ( int j=0; j< ncol_ch; j++ ) {			
+		for ( int j=0; j< ncol_ch; j++ ) {
+			//MatrixXd imageT = image[ch].transpose();
 			u1[ch][i*ncol_ch + j] = (float)image[ch](i,j);
 		}
   }			
@@ -558,4 +676,14 @@ MatrixXd * remake_bayer( MatrixXd * image, int num_channels, int num_channels_ou
   return out_image;	
 }
 
+std::string getFileExt(const std::string& s)
+{
+    size_t i = s.rfind('.', s.length());
+    if (i != std::string::npos)
+    {
+        return(s.substr(i+1, s.length() - i));
+    }
+    else
+        return("");
+}
 

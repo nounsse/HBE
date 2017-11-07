@@ -42,7 +42,7 @@
 
 #ifndef SHORT_NEWMAT
 #define SHORT_NEWMAT
-#include "newmatap.h"  // NEWMAT
+#include "newmatap.h"  // NEWMAT 
 typedef NEWMAT::Matrix NMatrix;
 typedef NEWMAT::SymmetricMatrix NSym;
 typedef NEWMAT::DiagonalMatrix NDiag;
@@ -50,6 +50,8 @@ typedef NEWMAT::ColumnVector NColV;
 typedef NEWMAT::RowVector NRowV;
 typedef NEWMAT::LogAndSign NLogAndSign;
 #endif
+
+#include "Utilities.h"
 
 using namespace Eigen;
 
@@ -148,10 +150,14 @@ int PLE_main_routine(
 			const char * input
 ,			const char * output 
 ,			const char * u_mtx 
-,			double sigma
+,			const char * f_mtx 
+,			const char * prnu_mtx 
 ,			int overlap 
 ,			int patch_size 
 ,			int num_orientations 
+,			double muR
+,			double g
+,			double sigma2R
 ,			double epsilon
 ,			int i_num_channels
 );     
@@ -169,11 +175,10 @@ int PLE_main_routine(
  * @param output denoised image name 
  * @param compare whether to see the difference between the denoised images and the clean one in MSE
  */
-void PLE_sub_routine(
+void PLE_sub_routine(			
 			MatrixXd * noisy
 ,			MatrixXd * invVar
 ,			int num_channels 
-,			double noise_sigma
 ,			int patch_size
 ,			int overlap
 ,			int num_orientations
@@ -203,7 +208,6 @@ MatrixXd * PLE_denoise(
 ,		int overlap
 ,		int patch_size
 ,		int num_channels
-,		double sigma
 ,		int num_models
 ,		MatrixXd * U
 ,		NSym * covs
@@ -228,7 +232,6 @@ void make_clusters_init(
 ,		NMatrix const * noisy_patches
 ,		NMatrix * invVar_at_row
 ,		MatrixXi & cluster_map
-,		double sigma
 ,		int num_models
 ,		int num_channels
 ,		NMatrix * U
@@ -287,6 +290,7 @@ double guess_signal(
 ,		int model
 );
 
+
 /** @brief an interface between newmat and eigen library */
 void convertFormat( 
 			VectorXd **& eigen
@@ -300,6 +304,7 @@ void convertFormat(
 
 void write_covs( const char *fname, NSym * covs, int num_models, int patch_size );
 void write_mus( const char *fname, NColV * mus, int num_models, int patch_size );
+NColV *read_mus( const char *fname, int num_models, int patch_size );
 NSym *read_covs( const char *fname, int num_models, int patch_size );
 
 

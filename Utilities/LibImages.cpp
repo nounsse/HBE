@@ -19,6 +19,7 @@
 
 #include "LibImages.h"
 #include "io_png.h"
+#include "io_exr.h"
 #include "io_pgm.h"
 #include "Utilities.h"
 #include "mt19937ar.h"
@@ -156,7 +157,7 @@ int loadGrayImage_16bits(
  * @return EXIT_SUCCESS if the image has been saved, EXIT_FAILURE otherwise
  **/
 int saveImage(
-    const char* p_name
+    char* p_name
 ,   std::vector<double> const& i_im
 ,   const ImageSize &p_imSize
 ,   const double p_min
@@ -180,6 +181,70 @@ int saveImage(
 
     return EXIT_SUCCESS;
 }
+
+void saveImageExr(
+    char* p_name
+,   std::vector<double> const& i_im
+,   const ImageSize &p_imSize
+){
+    //! Allocate Memory
+    float* imTmp = new float[p_imSize.whc];
+    
+    for (unsigned k = 0; k < p_imSize.whc; k++) {
+        imTmp[k] = (float)i_im[k];
+    }
+
+    writeEXR_float(p_name, imTmp, p_imSize.width, p_imSize.height);
+
+    //! Free Memory
+    delete[] imTmp;
+    
+}
+
+int loadImageExr(
+    char* p_name
+,   std::vector<double> &o_im
+,   ImageSize &o_imSize
+,   const bool p_verbose
+){
+    //! read input image
+    if (p_verbose) {
+        cout << endl << "Read input image...";
+    }
+	
+	int w, h, c = 1;
+	float *imTmpFloat = NULL;
+	imTmpFloat = readEXR_float (p_name, &w, &h);
+	
+	if (!imTmpFloat) {
+		cout << "error :: " << p_name << " not found or not a correct EXR image" << endl;
+		return EXIT_FAILURE;
+	}
+	if (p_verbose) {
+        cout << "done." << endl;
+	}			
+
+	//! Some image informations
+	if (p_verbose) {
+        cout << "image size :" << endl;
+        cout << " - width          = " << w << endl;
+        cout << " - height         = " << h << endl;
+        cout << " - nb of channels = " << c << endl;
+	}
+
+	//! Initializations
+	o_imSize.width      = w;
+	o_imSize.height     = h;
+	o_imSize.nChannels  = c;
+	o_imSize.wh         = w * h;
+	o_imSize.whc        = w * h * c;
+	o_im.resize(w * h * c);
+	for (int k = 0; k < w * h * c; k++)
+        o_im[k] = (double)imTmpFloat[k];
+
+    return EXIT_SUCCESS;
+}
+
 
 
 /**

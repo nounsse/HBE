@@ -22,9 +22,11 @@
 #include <sys/time.h>
 
 #include "Utilities/Utilities.h"
-#include "initialization/PLE_lib.h"
+#include "hbe/hbe.h"
 #include "Utilities/LibImages.h"
-#include "hbe.h"
+
+#include "PLE_lib.h"
+#include "util.h"
 
 #include <algorithm>
 
@@ -37,15 +39,18 @@ static void show_help();
 static void show_help() {
     std::cerr<<"\nHBE.\n"
             << "Usage: "
-            << " HBE input mask initImage output [options]\n\n"
-            << "Options (default values in parentheses)\n"
-            << "-sigma: Degradation parameter (30)\n"
+            << "HBE input mask initImage output -muR -sigmaR -tau -gain [options]\n"
+            << "Mandatory camera parameters\n"
+            << "-muR: camera noise mean value (offset)\n"
+            << "-sigmaR: camera noise variance\n"
+            << "-tau: shutter speed\n"
+            << "-muR: camera gain\n"
+            << "Optionnal parameters (default values in parentheses)\n"
             << "-pSize: patch size (4)\n"
             << "-offset: offset between patches (pSize -1 = 3)\n"
             << "-alpha_H: (1)\n"
             << "-alpha_L: (0.5)\n"
             << "-epsilon_pd: (0.001)\n"
-            << "-noise: (0 : no noise, 1 : noise, default : 0)"
             << std::endl;
 }
 
@@ -55,8 +60,8 @@ static void show_help() {
  *
  *
  *
+ * @author MARC LEBRUN  <marc.lebrun.ik@gmail.com>
  **/
-
 
 /**
  *
@@ -74,25 +79,6 @@ char* getCmdOption(char ** begin, char ** end, const std::string & option)
     return 0;
 }
 
-/**
- *
- */
-/**
-* @brief Get file exension of file name
-*
-* @param File name
-* @return File extension
-*/
-std::string getFileExt(const std::string& s)
-{
-    size_t i = s.rfind('.', s.length());
-    if (i != std::string::npos)
-    {
-        return(s.substr(i+1, s.length() - i));
-    }
-    else
-        return("");
-}
 
 /**
  *
@@ -109,68 +95,55 @@ bool cmdOptionExists(char** begin, char** end, const std::string& option)
     return std::find(begin, end, option) != end;
 }
 
-// Computes random number between min and max
-// between 0 and 1 if min == max
-double getRandomNumber( double min, double max ){
-
-    double min_v = std::min( min, max );
-    double max_v = std::max( min, max );
-
-    if( min_v == max_v ){
-        min_v = 0;
-        max_v = 1;
-    }
-
-    double r = ((double) rand() / (RAND_MAX));
-    return ( r )*( max_v - min_v ) + min_v;
-}
 
 int main(int argc, char **argv)
 {
     //! Check if there is the right call for the algorithm
-    if (argc < 3) {
+    if (argc < 9) {
 
         if(cmdOptionExists(argv, argv+argc, "-help"))
         {
             show_help();
             return 0;
         }
-
-        cout << "usage: HBE input output [options]\n\n"
-             << "Options (default values in parentheses)\n"
-             << "-sigma: Degradation parameter (30)\n"
+        cout << "usage: HBE input mask sve_factors PRNU output -muR -sigmaR -tau -gain [options]\n"
+             << "1. input: corrupted sve image filename (.pgm)\n"
+             << "2. mask image filename (.pgm)\n"
+             << "3. sve factors image filename (.pgm)\n"
+             << "4. PRNU image filename (.pgm)\n"
+             << "5. output image filename (.pgm)\n"
+             << "Mandatory camera parameters\n"
+             << "-muR: camera noise mean value (offset)\n"
+             << "-sigmaR: camera noise variance\n"
+             << "-tau: shutter speed\n"
+             << "-muR: camera gain\n"
+             << "Optionnal parameters (default values in parentheses)\n"
              << "-pSize: patch size (4)\n"
              << "-offset: offset between patches (pSize -1 = 3)\n"
              << "-alpha_H: (1)\n"
              << "-alpha_L: (0.5)\n"
              << "-epsilon_pd: (0.001)\n"
-             << "-degradation: generate a degradation mask of a given percentage\n"
-             << "-mask: degradation mask taken from a file filename.png\n"
-             << "-noise: (0 : no noise, 1 : noise, default : 0)"
              << std::endl;
         return EXIT_FAILURE;
     }
 
+    //! Camera parameters
+    double muR = 2046.0; //! camera noise mean value (offset)
+    double sigmaR = 30.0;     //! camera noise variance
+    double tau = 0.051;  //! shutter speed
+    double gain = 0.87;     //! camera gain
+
     //! Variables initialization
-    double sigma = 30;
     double alphaH = 1;
     double alphaL = 0.5;
-    unsigned pSize = 4;
+    unsigned pSize = 8;
     double minPixKnown = 0.5;
     unsigned offset = pSize - 1;
     double Nfactor = 1.5;
-    double epsilon_pd = 0.001;
+    double epsilon_pd = 0.1;
     double NfactorPrior = 2.5;
-    unsigned doNoise = 1;
-    char * mask_filename;
-    bool use_mask_file =false;
-    int degradation = 0;
 
 
-    if(cmdOptionExists(argv, argv+argc, "-sigma"))
-    {
-        sigma = (double)atof(getCmdOption(argv, argv + argc, "-sigma"));
-    }
     if(cmdOptionExists(argv, argv+argc, "-pSize"))
     {
         pSize = atoi(getCmdOption(argv, argv + argc, "-pSize"));
@@ -193,156 +166,123 @@ int main(int argc, char **argv)
     {
         epsilon_pd = (double)atof(getCmdOption(argv, argv + argc, "-epsilon_pd"));
     }
-    if(cmdOptionExists(argv, argv+argc, "-noise"))
+
+    if(cmdOptionExists(argv, argv+argc, "-muR"))
     {
-        doNoise = atoi(getCmdOption(argv, argv + argc, "-noise"));
+        muR = (double)atof(getCmdOption(argv, argv + argc, "-muR"));
+    } else {
+        show_help();
+        return EXIT_FAILURE;
     }
-
-    if(cmdOptionExists(argv, argv+argc, "-mask"))
+    if(cmdOptionExists(argv, argv+argc, "-gain"))
     {
-        use_mask_file = true;
-        mask_filename = getCmdOption(argv, argv + argc, "-mask");
+        gain = (double)atof(getCmdOption(argv, argv + argc, "-gain"));
+    } else {
+        show_help();
+        return EXIT_FAILURE;
     }
-
-    if(cmdOptionExists(argv, argv+argc, "-degradation"))
+    if(cmdOptionExists(argv, argv+argc, "-sigmaR"))
     {
-        degradation = atoi(getCmdOption(argv, argv + argc, "-degradation"));
+        sigmaR = (double)atof(getCmdOption(argv, argv + argc, "-sigmaR"));
+    } else {
+        show_help();
+        return EXIT_FAILURE;
     }
-
-    double varSigma = sigma*sigma;
-
+    if(cmdOptionExists(argv, argv+argc, "-tau"))
+    {
+        tau = (double)atof(getCmdOption(argv, argv + argc, "-tau"));
+    } else {
+        show_help();
+        return EXIT_FAILURE;
+    }
     const bool verbose  = true;
 
     if (verbose) {
         cout << "Parameters: " << endl;
-        cout << "Sigma: " << sigma << endl;
         cout << "Patch size: " << pSize << endl;
         cout << "Patch offset: " << offset << endl;
         cout << "alpha_H: " << alphaH << endl;
         cout << "alpha_L: " << alphaL << endl;
         cout << "Epsilon pd: " << epsilon_pd << endl;
-        cout << "Noise: " << doNoise << endl;
     }
 
     //! Declarations
-    vector<double> im, imNoisy, imBasic, imFinal, imUmask;
-    ImageSize imSize, imSizeBasic, imSizeUmask;
+    vector<double> imNoisy, imBasic, imFinal, imUmask, imSveFactors;
+    ImageSize imSize, imSizeBasic, imSizeUmask, imSizeSve;
 
     //! Load input image
-    if (strcmp((const char*)(getFileExt(argv[1]).c_str()),"pgm")==0)
-    {
-        if(loadGrayImage_16bits(argv[1], im, imSize, verbose) != EXIT_SUCCESS)
+    if(loadGrayImage_16bits(argv[1], imNoisy, imSize, verbose) != EXIT_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    //! Load degradation mask image
+    if (strcmp((const char*)(getFileExt(argv[2]).c_str()),"png")==0){
+        if(loadImage(argv[2], imUmask, imSizeUmask, verbose) != EXIT_SUCCESS) {
             return EXIT_FAILURE;
-    } else if (strcmp((const char*)(getFileExt(argv[1]).c_str()),"png")==0){
-        if(loadImage(argv[1], im, imSize, verbose) != EXIT_SUCCESS)
-            return EXIT_FAILURE;
+        }
     } else {
+        if(loadGrayImage_16bits(argv[2], imUmask, imSizeUmask, verbose) != EXIT_SUCCESS) {
+            return EXIT_FAILURE;
+        }
+    }
+    //! Load sve factors image
+    if(loadImageExr(argv[3], imSveFactors, imSizeSve, verbose) != EXIT_SUCCESS) {
         return EXIT_FAILURE;
     }
 
-    if( use_mask_file ){
-
-        //! Load degradation mask image
-        if (strcmp((const char*)(getFileExt(mask_filename).c_str()),"png")==0)
-        {
-            if(loadImage(mask_filename, imUmask, imSizeUmask, verbose) != EXIT_SUCCESS)
-                return EXIT_FAILURE;
-        }
-        else {
-            if(loadGrayImage_16bits(mask_filename, imUmask, imSizeUmask, verbose) != EXIT_SUCCESS)
-                return EXIT_FAILURE;
-        }
-
-    } else {
-
-        //! Generate degradation mask
-        imSizeUmask.width = imSize.width;
-        imSizeUmask.height = imSize.height;
-        imSizeUmask.nChannels = 1;
-        imSizeUmask.wh =  imSizeUmask.width*imSizeUmask.height;
-        imSizeUmask.whc =  imSizeUmask.width*imSizeUmask.height*imSizeUmask.nChannels;
-
-        imUmask.clear();
-        imUmask.resize(imSize.wh, 0);
-
-        if (degradation > 0) {
-            int count = 0;
-            int max_number = imSizeUmask.wh*(float)degradation/100.;
-
-            srand(time(NULL)); // initialisation de rand
-
-            while ( count < max_number ){
-                int rand ;
-                do {
-                    rand = getRandomNumber( 0, imSizeUmask.wh );
-                } while( imUmask[rand] != 0 );
-                imUmask[rand] = 128;
-                count++;
-            }
-
-            mask_filename = "tmp_mask_file.png";
-            saveImage(mask_filename, imUmask, imSizeUmask, 0, 255);
-            use_mask_file = true;
-        }
-    }
-
-    //! Add noise
-    if ( doNoise == 1 ) {
-        addNoise(im, imNoisy, sigma, verbose);
-        cout << "Adding noise." << endl;
-        saveImage("noisy.png", imNoisy, imSize, 0, 255);
-    }
-    else
-        imNoisy = im;
-
     //! Load initialization image
-    if ( doNoise == 1 ) { //! Initialization is not needed if denoising only
-        imBasic = imNoisy;
-        imSizeBasic = imSize;
-    }
+    const char * input = argv[1];
+    const char * u_mtx = argv[2];
+    const char * f_mtx = argv[3];
+    const char * prnu_mtx = argv[4];
 
-    if ( use_mask_file ) {
-        const char * input = argv[1];
-        const char * u_mtx = mask_filename;
-        int overlap = offset;
-        char * output = "tmp_init_img.png";
+    int overlap = offset;
+    char * output = "init_tmp.png";
 
-        int num_orient = 18;
-        double epsilon = 30.0;
-        double numChannels = 1.0;
+    int num_orient = 18;
+    double epsilon = 0.1;
+    double numChannels = 4.0;
 
-        PLE_main_routine( 	/* input */ input,
+    if( PLE_main_routine( 	/* input */ input,
                             /* output */ output,
                             /* u matrix */ u_mtx,
-                            /* polluting_sigma */ sigma,
+                            /* f matrix */ f_mtx,
+                            /* prnu matrix */ prnu_mtx,
                             /* overlap */ overlap,
                             /* patch_size */ pSize,
-                            /* num_orientations */ num_orient,
+                            /* num_orientations */ num_orient,//18,
+                            /* muR */ muR,
+                            /* gain */ gain,
+                            /* sigma2R */ sigmaR,
                             /* epsilon for covariance matrix */ epsilon,
-                            numChannels);
+                            numChannels) != EXIT_SUCCESS )
+        return EXIT_FAILURE;
 
-        if(loadImage(output, imBasic, imSizeBasic, verbose) != EXIT_SUCCESS) {
-            return EXIT_FAILURE;
-        }
+    if(loadImage(output, imBasic, imSizeBasic, verbose) != EXIT_SUCCESS) {
+        return EXIT_FAILURE;
+    }
 
-        remove( output );
-        if(degradation > 0)
-            remove( mask_filename );
+    remove( output );
+
+    //! Normalize image
+    for (unsigned k = 0; k < imSize.whc; k++) {
+        double factor = gain*tau*imSveFactors[k];
+        imNoisy[k] =  imUmask[k]*( imNoisy[k] - muR ) / factor ;
     }
 
     //! Apply HBE for restoration
     if (verbose) {
-        cout << endl << "Restoring the input image using HBE:" << endl;
+        cout << endl << "Restoring the input image usign HBE:" << endl;
     }
     struct timeval start, end;
     gettimeofday(&start, NULL);
 
-    if (runHBE(imNoisy, imBasic, imFinal, imUmask, imSize,
-               sigma, verbose, alphaH, alphaL, minPixKnown,
+    if (runHBE(imNoisy, imBasic, imFinal, imUmask, imSveFactors, imSize,
+               verbose, alphaH, alphaL, minPixKnown,
                pSize, offset,Nfactor, NfactorPrior,
-               epsilon_pd, varSigma)!= EXIT_SUCCESS) {
+               epsilon_pd, muR, sigmaR, gain, tau)!= EXIT_SUCCESS) {
         return EXIT_FAILURE;
     }
+
 
     if (verbose) {
         gettimeofday(&end, NULL);
@@ -350,17 +290,12 @@ int main(int argc, char **argv)
                 (end.tv_usec - start.tv_usec) / 1.e6;
         std::cout<< "time elapsed : "<< elapsedTime << " seconds "<< std::endl;
         std::cout<< "***************************"<< std::endl<< std::endl<< std::endl;
-
         cout << endl;
     }
 
-    std::string output_filename (argv[2]);
+    //! Save output image in EXR format
+    saveImageExr(argv[5], imFinal, imSize);
 
-    //! Save output image
-    if (strcmp((const char*)(getFileExt(argv[2]).c_str()),"png")!=0)
-        output_filename.append(".png");
-
-    saveImage(output_filename.c_str(), im, imSize, 0, 255);
 
     if (verbose) {
         cout << "done." << endl;

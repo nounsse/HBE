@@ -55,7 +55,6 @@ NSym covarianceMatrix(
 ,	double beta
 ,	unsigned nSimPreal
 ,	double epsilon_pd
-,	NDiag Ew
 );
 
 

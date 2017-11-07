@@ -17,7 +17,7 @@
 #include "../Utilities/Utilities.h"
 
 /**
- * @brief Structures of parameters dedicated to HBE process
+ * @brief Structures of parameters dedicated to NL-Bayes process
  *
  * @param sigma: value of noise;
  * @param sizePatch: size of patches (sizePatch x sizePatch);
@@ -71,7 +71,7 @@ struct matParams
 };
 
 /**
- * @brief Initialize Parameters of the HBE algorithm.
+ * @brief Initialize Parameters of the NL-Bayes algorithm.
  *
  * @param o_paramStep1 : will contain the nlbParams for the first step of the algorithm;
  * @param o_paramStep2 : will contain the nlbParams for the second step of the algorithm;
@@ -85,7 +85,6 @@ struct matParams
  **/
 void initializeParameters(
 	nlbParams &o_paramStep2
-,   const double p_sigma
 ,	const ImageSize &p_imSize
 ,   const bool p_verbose
 ,	unsigned pSize
@@ -93,7 +92,7 @@ void initializeParameters(
 );
 
 /**
- * @brief Main function to process the whole HBE algorithm.
+ * @brief Main function to process the whole NL-Bayes algorithm.
  *
  * @param i_imNoisy: contains the noisy image;
  * @param o_imBasic: will contain the basic estimate image after the first step;
@@ -111,8 +110,8 @@ int runHBE(
 ,   std::vector<double> &imBasic
 ,	std::vector<double> &imFinal
 ,   std::vector<double> &imUmask
+,   std::vector<double> &imSveF
 ,	const ImageSize &p_imSize
-,	const double p_sigma
 ,   const bool p_verbose
 ,	double alphaH
 ,	double alphaL
@@ -122,11 +121,14 @@ int runHBE(
 ,	double Nfactor
 ,	double NfactorPrior
 ,	double epsilon_pd
-,	double varSigma
+,	double muR
+,	double sigmaR 
+,	double gain
+,	double tau
 );
 
 /**
- * @brief Generic step of the HBE denoising (could be the first or the second).
+ * @brief Generic step of the NL-Bayes denoising (could be the first or the second).
  *
  * @param i_imNoisy: contains the noisy image;
  * @param io_imBasic: will contain the denoised image after the first step (basic estimation);
@@ -148,19 +150,23 @@ int runHBE(
  * @return none.
  **/
 void processHBE(
-	std::vector<double> const& i_imNoisy
-,	std::vector<double> &io_imBasic
-,	std::vector<double> &i_Umask
-,	std::vector<double> &o_imFinal
+	std::vector<double> const& imNoisy
+,	std::vector<double> &imBasic
+,	std::vector<double> &Umask
+,	std::vector<double> &imSveF
+,	std::vector<double> &imFinal
 ,	const ImageSize &p_imSize
 ,	nlbParams &p_params
 ,	double alphaH
 ,	double alphaL
-,	double minPixKnown
+,   double minPixKnown
 ,	double Nfactor
 ,	double NfactorPrior
 ,	double epsilon_pd
-,	double varSigma
+,	double muR
+,	double sigmaR
+,	double gain
+,	double tau
 );
 
 
@@ -179,13 +185,15 @@ void processHBE(
  * @return number of similar patches kept.
  **/
 unsigned findSimilarPatches(
-	std::vector<double> const& i_imNoisy
-,	std::vector<double> const& i_imBasic
-,	std::vector<double> const& i_Umask
+	std::vector<double> const& imNoisy
+,	std::vector<double> const& imBasic
+,	std::vector<double> const& Umask
+,	std::vector<double> const& i_sveF
 ,	std::vector<double> &o_group3dNoisy
 ,	std::vector<double> &o_group3dBasic
 ,	std::vector<double> &o_group3dBasicPrior
 ,	std::vector<double> &o_Umask
+,	std::vector<double> &o_sveF
 ,	std::vector<unsigned> &o_index
 ,	const unsigned p_ij
 ,	const ImageSize &p_imSize
@@ -193,7 +201,7 @@ unsigned findSimilarPatches(
 ,   double N
 ,   double Nprior
 ,	double minPixKnown
-,	unsigned *nSimPprior
+,	unsigned *nSimPprior_out
 );
 
 
@@ -221,6 +229,7 @@ void computeBayesEstimate(
 ,	std::vector<double> &io_group3dBasic
 ,	std::vector<double> &io_group3dBasicPrior
 ,	std::vector<double> &i_Umask
+,	std::vector<double> &i_sveF
 ,	const ImageSize &p_imSize
 ,	nlbParams p_params
 ,	const unsigned p_nSimP
@@ -228,8 +237,10 @@ void computeBayesEstimate(
 ,	double kappa
 ,	double nu
 ,	double epsilon_pd
-,	NDiag Ew
 ,	std::vector<double> &Wout
+,	double gain
+,	double sigmaR
+,	double tau
 );
 
 

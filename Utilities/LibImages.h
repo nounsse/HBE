@@ -27,11 +27,11 @@
  **/
 struct ImageSize
 {
-	unsigned width;
-	unsigned height;
-	unsigned nChannels;
-	unsigned wh;
-	unsigned whc;
+    unsigned width;
+    unsigned height;
+    unsigned nChannels;
+    unsigned wh;
+    unsigned whc;
 };
 
 /**
@@ -79,11 +79,17 @@ int loadGrayImage_16bits(
  * @return EXIT_SUCCESS if the image has been saved, EXIT_FAILURE otherwise
  **/
 int saveImage(
-    const char* p_name
+    char* p_name
 ,   std::vector<double> const& i_im
 ,   const ImageSize &p_imSize
 ,   const double p_min
 ,   const double p_max
+);
+
+void saveImageExr(
+    char* p_name
+,   std::vector<double> const& i_im
+,   const ImageSize &p_imSize
 );
 
 /**
@@ -156,7 +162,7 @@ int computeDiff(
  * @return none.
  **/
 int addBoundary(
-	std::vector<double> const& i_im
+    std::vector<double> const& i_im
 ,	std::vector<double> &o_imSym
 ,	const ImageSize &p_imSize
 ,	const ImageSize &p_imSizeSym
@@ -173,7 +179,7 @@ int addBoundary(
  * @return none.
  **/
 int removeBoundary(
-	std::vector<double> &o_im
+    std::vector<double> &o_im
 ,	std::vector<double> const& i_imSym
 ,	const ImageSize &p_imSize
 ,	const ImageSize &p_imSizeSym
@@ -191,7 +197,7 @@ int removeBoundary(
  * @return none.
  **/
 void symetrizeImage(
-	std::vector<double> const& i_im1
+    std::vector<double> const& i_im1
 ,	std::vector<double> &o_im2
 ,	const ImageSize p_imSize
 ,	const unsigned p_borderSize
@@ -208,7 +214,7 @@ void symetrizeImage(
  * @return none.
  **/
 void transformColorSpace(
-	std::vector<double> &io_im
+    std::vector<double> &io_im
 ,	const ImageSize p_imSize
 ,	const bool p_isForward
 );
@@ -226,7 +232,7 @@ void transformColorSpace(
  * @return EXIT_FAILURE in case of problems.
  **/
 int subDivide(
-	std::vector<double> const& i_im
+    std::vector<double> const& i_im
 ,	std::vector<std::vector<double> > &o_imSub
 ,	const ImageSize &p_imSize
 ,	ImageSize &p_imSizeSub
@@ -246,11 +252,18 @@ int subDivide(
  * @return EXIT_FAILURE in case of problems.
  **/
 int subBuild(
-	std::vector<double> &o_im
+    std::vector<double> &o_im
 ,	std::vector<std::vector<double> > const& i_imSub
 ,	const ImageSize &p_imSize
 ,	ImageSize &p_imSizeSub
 ,	const unsigned p_N
+);
+
+int loadImageExr(
+    char* p_name
+,   std::vector<double> &o_im
+,   ImageSize &o_imSize
+,   const bool p_verbose
 );
 
 double computeSNR(

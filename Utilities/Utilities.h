@@ -17,7 +17,7 @@
 
 #ifndef SHORT_NEWMAT
 #define SHORT_NEWMAT
-#include "newmatap.h"  // NEWMAT
+#include "newmatap.h"  // NEWMAT 
 typedef NEWMAT::Matrix NMatrix;
 typedef NEWMAT::SymmetricMatrix NSym;
 typedef NEWMAT::DiagonalMatrix NDiag;
@@ -31,7 +31,7 @@ typedef NEWMAT::RowVector NRowV;
  * @brief Convenient function to use the sort function provided by the vector library.
  **/
 bool comparaisonFirst(
-    const std::pair<double, unsigned> &i_pair1
+	const std::pair<double, unsigned> &i_pair1
 ,	const std::pair<double, unsigned> &i_pair2
 );
 
@@ -45,7 +45,7 @@ bool comparaisonFirst(
  * @return value clipped between [min, max].
  **/
 double clip(
-    const double i_value
+	const double i_value
 ,	const double i_min
 ,	const double i_max
 );
@@ -60,18 +60,21 @@ double clip(
  * @return none.
  **/
 void computeW(
-    std::vector<double> &io_group2d
+	std::vector<double> &io_group2d
 ,	std::vector<double> &i_Umask3d
+,	std::vector<double> &i_sveF
 ,	std::vector<double> &Wout
 ,	NSym cov_ple
 ,	const unsigned p_rows
 ,	const unsigned p_cols
 ,	unsigned nSimPreal
-,	NDiag Ew
+,	double gain
+,	double sigmaR
+,	double tau
 );
 
 NColV centerData(
-    std::vector<double> &io_group2d
+	std::vector<double> &io_group2d
 ,	std::vector<double> &i_Umask3d
 ,	NColV mu_ple
 ,	const unsigned p_rows
@@ -82,7 +85,7 @@ NColV centerData(
 );
 
 NColV centerDataForPrior(
-    std::vector<double> &io_group3d
+	std::vector<double> &io_group3d
 ,	const unsigned p_rows
 ,	const unsigned p_cols
 );
@@ -104,6 +107,15 @@ void determineFactor(
 ,   unsigned &o_b
 );
 
+vector<double> compute_variance( 
+	  std::vector<double> const& i_im
+	, std::vector<double> const& i_sveFactors
+	, std::vector<double> const& i_Umask
+	, double g
+	, double tau
+	, double b	
+	, const ImageSize &p_imSize 
+);
 
 NSym * read_covs( int num_models, int patch_size );
 

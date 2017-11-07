@@ -1,0 +1,4 @@
+To test the code run:
+
+./HBE example/img.pgm example/u.png example/F.exr example/PRNU.pgm out.exr -muR 2046.0 -sigmaR 30.0 -tau 0.051 -gain 0.87 
+

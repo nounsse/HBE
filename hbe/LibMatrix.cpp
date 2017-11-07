@@ -83,7 +83,6 @@ NSym covarianceMatrix(
 ,	double beta
 ,	unsigned nSimPreal
 ,	double epsilon_pd
-,	NDiag Ew
 ){
 	NMatrix y_rec_cum(SP2,SP2);
 	NMatrix Linv(SP2,SP2);
