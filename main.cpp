@@ -22,7 +22,7 @@
 #include <sys/time.h>
 
 #include "Utilities/Utilities.h"
-#include "initialization/PLE_lib.h"
+#include "PLE_lib.h"
 #include "Utilities/LibImages.h"
 #include "hbe.h"
 
@@ -161,11 +161,12 @@ int main(int argc, char **argv)
     double Nfactor = 1.5;
     double epsilon_pd = 0.001;
     double NfactorPrior = 2.5;
-    unsigned doNoise = 1;
+    unsigned doNoise = 0;
     char * mask_filename;
     bool use_mask_file =false;
+    bool use_degradation_mask = false;
     int degradation = 0;
-
+    char * degradated_img = argv[1];
 
     if(cmdOptionExists(argv, argv+argc, "-sigma"))
     {
@@ -252,7 +253,7 @@ int main(int argc, char **argv)
             if(loadGrayImage_16bits(mask_filename, imUmask, imSizeUmask, verbose) != EXIT_SUCCESS)
                 return EXIT_FAILURE;
         }
-
+        use_degradation_mask = true;
     } else {
 
         //! Generate degradation mask
@@ -282,27 +283,31 @@ int main(int argc, char **argv)
 
             mask_filename = "tmp_mask_file.png";
             saveImage(mask_filename, imUmask, imSizeUmask, 0, 255);
-            use_mask_file = true;
+            use_degradation_mask = true;
         }
     }
 
     //! Add noise
     if ( doNoise == 1 ) {
         addNoise(im, imNoisy, sigma, verbose);
-        cout << "Adding noise." << endl;
-        saveImage("noisy.png", imNoisy, imSize, 0, 255);
     }
     else
         imNoisy = im;
 
-    //! Load initialization image
-    if ( doNoise == 1 ) { //! Initialization is not needed if denoising only
-        imBasic = imNoisy;
-        imSizeBasic = imSize;
+    vector<double> degradated = imNoisy;
+    for(unsigned int i = 0 ; i < imUmask.size() ; i ++ )
+        if( imUmask[i] > 0 )
+            degradated[i] = imUmask[i];
+
+    if( doNoise == 1 || use_degradation_mask ){
+        degradated_img = "degradated.png";
+        saveImage(degradated_img, degradated, imSize, 0, 255);
     }
 
-    if ( use_mask_file ) {
-        const char * input = argv[1];
+    //! Load initialization image
+
+    if ( use_degradation_mask ) {
+        const char * input = degradated_img;
         const char * u_mtx = mask_filename;
         int overlap = offset;
         char * output = "tmp_init_img.png";
@@ -328,6 +333,10 @@ int main(int argc, char **argv)
         remove( output );
         if(degradation > 0)
             remove( mask_filename );
+
+    } else {
+        imBasic = imNoisy;
+        imSizeBasic = imSize;
     }
 
     //! Apply HBE for restoration
@@ -360,7 +369,7 @@ int main(int argc, char **argv)
     if (strcmp((const char*)(getFileExt(argv[2]).c_str()),"png")!=0)
         output_filename.append(".png");
 
-    saveImage(output_filename.c_str(), im, imSize, 0, 255);
+    saveImage(output_filename.c_str(), imFinal, imSize, 0, 255);
 
     if (verbose) {
         cout << "done." << endl;
