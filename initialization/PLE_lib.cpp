@@ -34,7 +34,7 @@
 
 #ifndef SHORT_NEWMAT
 #define SHORT_NEWMAT
-#include "newmatap.h"  // NEWMAT 
+#include "../newmat10/newmatap.h"  // NEWMAT
 typedef NEWMAT::Matrix NMatrix;
 typedef NEWMAT::SymmetricMatrix NSym;
 typedef NEWMAT::DiagonalMatrix NDiag;
@@ -89,7 +89,6 @@ int PLE_main_routine(
     int Unum_channels, Uimage_rows, Uimage_cols;
     MatrixXd * U = NULL;
     if (strcmp((const char*)(getFileExt(u_mtx).c_str()),"png")==0){
-        std::cout << "here " << u_mtx<< std::endl;
         imread( u_mtx, Uimage_rows, Uimage_cols,
                 Unum_channels, U );
     } else {
@@ -98,6 +97,9 @@ int PLE_main_routine(
     }
     if( U == NULL )
         fail("Unable to get the U image");
+    if( Unum_channels != num_channels )
+        fail("Number of channels for the mask should match the one of the input");
+
     int Fnum_channels, Fimage_rows, Fimage_cols;
     MatrixXd * F = NULL;
     imread_exr( f_mtx, i_num_channels, Fimage_rows, Fimage_cols, Fnum_channels, F );
