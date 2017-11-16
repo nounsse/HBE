@@ -27,6 +27,7 @@
 
 #include "PLE_lib.h"
 #include "util.h"
+#include "io_pgm.h"
 
 #include <algorithm>
 
@@ -37,21 +38,24 @@ static void show_help();
 
 /// help on usage of hbe code
 static void show_help() {
-    std::cerr<<"\nHBE.\n"
-            << "Usage: "
-            << "HBE input mask initImage output -muR -sigmaR -tau -gain [options]\n"
-            << "Mandatory camera parameters\n"
-            << "-muR: camera noise mean value (offset)\n"
-            << "-sigmaR: camera noise variance\n"
-            << "-tau: shutter speed\n"
-            << "-muR: camera gain\n"
-            << "Optionnal parameters (default values in parentheses)\n"
-            << "-pSize: patch size (4)\n"
-            << "-offset: offset between patches (pSize -1 = 3)\n"
-            << "-alpha_H: (1)\n"
-            << "-alpha_L: (0.5)\n"
-            << "-epsilon_pd: (0.001)\n"
-            << std::endl;
+    cout << "usage: HBE input mask sve_factors PRNU output -muR -sigmaR -tau -gain [options]\n"
+         << "1. input: corrupted sve image filename (.pgm)\n"
+         << "2. mask image filename (.pgm)\n"
+         << "3. sve factors image filename (.pgm)\n"
+         << "4. output image filename (.pgm)\n"
+         << "Mandatory camera parameters\n"
+         << "-muR: camera noise mean value (offset)\n"
+         << "-sigmaR: camera noise variance\n"
+         << "-tau: shutter speed\n"
+         << "-muR: camera gain\n"
+         << "Optionnal parameters (default values in parentheses)\n"
+         << "-prnu PRNU image filename (.pgm) (default image with 1)\n"
+         << "-pSize: patch size (4)\n"
+         << "-offset: offset between patches (pSize -1 = 3)\n"
+         << "-alpha_H: (1)\n"
+         << "-alpha_L: (0.5)\n"
+         << "-epsilon_pd: (0.001)\n"
+         << std::endl;
 }
 
 /**
@@ -99,7 +103,7 @@ bool cmdOptionExists(char** begin, char** end, const std::string& option)
 int main(int argc, char **argv)
 {
     //! Check if there is the right call for the algorithm
-    if (argc < 9) {
+    if (argc < 8) {
 
         if(cmdOptionExists(argv, argv+argc, "-help"))
         {
@@ -109,15 +113,15 @@ int main(int argc, char **argv)
         cout << "usage: HBE input mask sve_factors PRNU output -muR -sigmaR -tau -gain [options]\n"
              << "1. input: corrupted sve image filename (.pgm)\n"
              << "2. mask image filename (.pgm)\n"
-             << "3. sve factors image filename (.pgm)\n"
-             << "4. PRNU image filename (.pgm)\n"
-             << "5. output image filename (.pgm)\n"
+             << "3. sve factors image filename (.exr)\n"
+             << "4. output image filename (.exr)\n"
              << "Mandatory camera parameters\n"
              << "-muR: camera noise mean value (offset)\n"
              << "-sigmaR: camera noise variance\n"
              << "-tau: shutter speed\n"
              << "-muR: camera gain\n"
              << "Optionnal parameters (default values in parentheses)\n"
+             << "-prnu PRNU image filename (.exr) (default image with 1)\n"
              << "-pSize: patch size (4)\n"
              << "-offset: offset between patches (pSize -1 = 3)\n"
              << "-alpha_H: (1)\n"
@@ -142,7 +146,14 @@ int main(int argc, char **argv)
     double Nfactor = 1.5;
     double epsilon_pd = 0.1;
     double NfactorPrior = 2.5;
+    bool default_prnu = true;
+    char * prnu_name = "prnu_tmp.exr";
 
+    if(cmdOptionExists(argv, argv+argc, "-prnu"))
+    {
+        prnu_name = getCmdOption(argv, argv + argc, "-prnu");
+        default_prnu = false;
+    }
 
     if(cmdOptionExists(argv, argv+argc, "-pSize"))
     {
@@ -229,14 +240,20 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+
+    if(default_prnu){
+        vector<double> data (imSize.whc, 1.);
+        saveImageExr(prnu_name, data, imSize);
+    }
+
     //! Load initialization image
     const char * input = argv[1];
     const char * u_mtx = argv[2];
     const char * f_mtx = argv[3];
-    const char * prnu_mtx = argv[4];
+    const char * prnu_mtx = prnu_name;
 
     int overlap = offset;
-    char * output = "init_tmp.png";
+    char * output = "init_tmp.exr";
 
     int num_orient = 18;
     double epsilon = 0.1;
@@ -257,11 +274,15 @@ int main(int argc, char **argv)
                             numChannels) != EXIT_SUCCESS )
         return EXIT_FAILURE;
 
-    if(loadImage(output, imBasic, imSizeBasic, verbose) != EXIT_SUCCESS) {
+    if(loadImageExr(output, imBasic, imSizeBasic, verbose) != EXIT_SUCCESS) {
         return EXIT_FAILURE;
     }
 
+
+
     remove( output );
+    if(default_prnu)
+        remove( prnu_name );
 
     //! Normalize image
     for (unsigned k = 0; k < imSize.whc; k++) {
@@ -294,7 +315,7 @@ int main(int argc, char **argv)
     }
 
     //! Save output image in EXR format
-    saveImageExr(argv[5], imFinal, imSize);
+    saveImageExr(argv[4], imFinal, imSize);
 
 
     if (verbose) {

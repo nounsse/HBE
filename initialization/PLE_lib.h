@@ -42,7 +42,7 @@
 
 #ifndef SHORT_NEWMAT
 #define SHORT_NEWMAT
-#include "newmatap.h"  // NEWMAT 
+#include "../newmat10/newmatap.h"  // NEWMAT 
 typedef NEWMAT::Matrix NMatrix;
 typedef NEWMAT::SymmetricMatrix NSym;
 typedef NEWMAT::DiagonalMatrix NDiag;
