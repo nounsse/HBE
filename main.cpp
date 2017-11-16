@@ -25,7 +25,6 @@
 #include "PLE_lib.h"
 #include "Utilities/LibImages.h"
 #include "hbe.h"
-
 #include <algorithm>
 
 using namespace std;
@@ -127,6 +126,7 @@ double getRandomNumber( double min, double max ){
 
 int main(int argc, char **argv)
 {
+
 
     //! Check if there is the right call for the algorithm
     if (argc < 3) {
@@ -265,7 +265,7 @@ int main(int argc, char **argv)
         imSizeUmask.whc =  imSizeUmask.width*imSizeUmask.height*imSizeUmask.nChannels;
 
         imUmask.clear();
-        imUmask.resize(imSize.wh, 0);
+        imUmask.resize(imSize.wh, 1);
 
         if (degradation > 0) {
             int count = 0;
@@ -277,8 +277,8 @@ int main(int argc, char **argv)
                 int rand ;
                 do {
                     rand = getRandomNumber( 0, imSizeUmask.wh );
-                } while( imUmask[rand] != 0 );
-                imUmask[rand] = 1;
+                } while( imUmask[rand] == 0 );
+                imUmask[rand] = 0;
                 count++;
             }
 
@@ -308,7 +308,7 @@ int main(int argc, char **argv)
     //! Load initialization image
 
     if ( use_degradation_mask ) {
-        const char * input = argv[1];
+        const char * input = degradated_img;
         const char * u_mtx = mask_filename;
         int overlap = offset;
         char * output = "tmp_init_img.png";
