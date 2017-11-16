@@ -127,6 +127,7 @@ double getRandomNumber( double min, double max ){
 
 int main(int argc, char **argv)
 {
+
     //! Check if there is the right call for the algorithm
     if (argc < 3) {
 
@@ -277,7 +278,7 @@ int main(int argc, char **argv)
                 do {
                     rand = getRandomNumber( 0, imSizeUmask.wh );
                 } while( imUmask[rand] != 0 );
-                imUmask[rand] = 128;
+                imUmask[rand] = 1;
                 count++;
             }
 
@@ -296,7 +297,7 @@ int main(int argc, char **argv)
 
     vector<double> degradated = imNoisy;
     for(unsigned int i = 0 ; i < imUmask.size() ; i ++ )
-        if( imUmask[i] > 0 )
+        if( imUmask[i] == 0 )
             degradated[i] = imUmask[i];
 
     if( doNoise == 1 || use_degradation_mask ){
@@ -307,7 +308,7 @@ int main(int argc, char **argv)
     //! Load initialization image
 
     if ( use_degradation_mask ) {
-        const char * input = degradated_img;
+        const char * input = argv[1];
         const char * u_mtx = mask_filename;
         int overlap = offset;
         char * output = "tmp_init_img.png";
@@ -330,9 +331,9 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        remove( output );
-        if(degradation > 0)
-            remove( mask_filename );
+      //  remove( output );
+       // if(degradation > 0)
+        //    remove( mask_filename );
 
     } else {
         imBasic = imNoisy;
